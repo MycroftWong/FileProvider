@@ -169,6 +169,35 @@ Uri contentUri = getUriForFile(getContext(), "wang.mycroft.fileprovider", newFil
 
 下面的代码中都是用了`Intent.addFlags(int)`添加`Intent.FLAG_GRANT_READ_URI_PERMISSION`或`Intent.FLAG_GRANT_WRITE_URI_PERMISSION`权限，这样就为`Intent`中所有的`Uri`和`ClipData`赋予了临时权限。另外还有一种方法是使用`Context.grantUriPermission(String, Uri)`来单独为某一个`package`（包/`app`）赋予`Uri`的访问权限。两者必有其一，不用重复添加。
 
+### 前提
+
+在`manifest中添加`FileProvider`：
+
+```xml
+<provider
+    android:name="androidx.core.content.FileProvider"
+    android:authorities="wang.mycroft.fileprovider.fileprovider"
+    android:exported="false"
+    android:grantUriPermissions="true">
+    <meta-data
+        android:name="android.support.FILE_PROVIDER_PATHS"
+        android:resource="@xml/file_paths" />
+</provider>
+```
+
+下面是`res/xml/file_paths.xml`的内容：
+
+```xml
+<?xml version="1.0" encoding="utf-8"?>
+<paths>
+    <files-path
+        name="image"
+        path="image_file" />
+    <external-files-path
+        name="apk"
+        path="apk_file" />
+</paths>
+```
 
 ### 1. 下载`apk`，调用系统安装
 
