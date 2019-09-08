@@ -1,12 +1,15 @@
 package wang.mycroft.fileprovider
 
+import android.Manifest
 import android.app.Activity
 import android.app.Dialog
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.graphics.BitmapFactory
 import android.graphics.Point
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import android.provider.MediaStore
 import android.util.Log
@@ -14,6 +17,7 @@ import android.view.WindowManager
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
 import kotlinx.android.synthetic.main.activity_main.*
 import okhttp3.*
@@ -51,6 +55,39 @@ class MainActivity : AppCompatActivity() {
         downloadButton.setOnClickListener { downloadApk() }
 
         takeButton.setOnClickListener { takePhoto() }
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            val permissionList = arrayOf(
+                Manifest.permission.READ_EXTERNAL_STORAGE,
+                Manifest.permission.WRITE_EXTERNAL_STORAGE
+            )
+            val needPermissionList = mutableListOf<String>()
+            permissionList.filter {
+                ContextCompat.checkSelfPermission(
+                    this,
+                    it
+                ) != PackageManager.PERMISSION_GRANTED
+            }.forEach { needPermissionList.add(it) }
+
+            if (needPermissionList.isNotEmpty()) {
+                requestPermissions(needPermissionList.toTypedArray(), 2)
+            }
+        }
+    }
+
+    override fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<out String>,
+        grantResults: IntArray
+    ) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode != 2) {
+            return
+        }
+        if (grantResults.any { it == PackageManager.PERMISSION_DENIED }) {
+            Toast.makeText(this, "请先通过权限", Toast.LENGTH_LONG).show()
+            finish()
+        }
     }
 
     private var dialog: Dialog? = null
@@ -98,13 +135,11 @@ class MainActivity : AppCompatActivity() {
                 val sink = file.sink().buffer()
                 val source = response.body!!.source()
 
-                val bufferSize = 200 * 1024L
-                // 写入文件
-                val buffer = sink.buffer
-                var len = source.read(buffer, bufferSize)
-                while (len != -1L) {
+                val bufferSize = 8 * 1024L
+
+                while (!source.exhausted()) {
+                    source.read(sink.buffer, bufferSize)
                     sink.emit()
-                    len = source.read(buffer, bufferSize)
                 }
 
                 // 关闭流
