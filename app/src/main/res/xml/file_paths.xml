@@ -9,4 +9,8 @@
         name="apk"
         path="apk_file" />
 
+    <cache-path
+        name="huawei"
+        path="Huawei" />
+
 </paths>

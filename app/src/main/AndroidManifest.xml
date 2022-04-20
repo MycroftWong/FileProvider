@@ -4,7 +4,7 @@
     xmlns:tools="http://schemas.android.com/tools"
     package="wang.mycroft.fileprovider">
 
-<!--    <dist:module dist:instant="true" />-->
+    <!--    <dist:module dist:instant="true" />-->
 
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
@@ -21,7 +21,9 @@
         android:theme="@style/AppTheme"
         android:usesCleartextTraffic="true"
         tools:ignore="UnusedAttribute">
-        <activity android:name=".MainActivity">
+        <activity
+            android:name=".MainActivity"
+            android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <action android:name="android.intent.action.VIEW" />

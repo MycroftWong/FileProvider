@@ -19,13 +19,18 @@ import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
-import kotlinx.android.synthetic.main.activity_main.*
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.suspendCancellableCoroutine
 import okhttp3.*
 import okio.buffer
 import okio.sink
+import wang.mycroft.fileprovider.databinding.ActivityMainBinding
 import java.io.File
 import java.io.IOException
 import java.util.*
+import kotlin.coroutines.resume
+import kotlin.coroutines.resumeWithException
 
 
 /**
@@ -37,6 +42,9 @@ import java.util.*
 class MainActivity : AppCompatActivity() {
 
     companion object {
+
+        private const val AUTHORITY = "wang.mycroft.fileprovider.fileprovider"
+
         /**
          * 拼多多apk下载地址
          */
@@ -48,13 +56,21 @@ class MainActivity : AppCompatActivity() {
 
     }
 
+    private val binding: ActivityMainBinding by lazy {
+        ActivityMainBinding.inflate(layoutInflater)
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setContentView(R.layout.activity_main)
+        setContentView(binding.root)
 
-        downloadButton.setOnClickListener { downloadApk() }
+        binding.downloadButton.setOnClickListener { downloadApk(false) }
 
-        takeButton.setOnClickListener { takePhoto() }
+        binding.takeButton.setOnClickListener { takePhoto(false) }
+
+        binding.huaweiDownloadButton.setOnClickListener { downloadApk(true) }
+
+        binding.huaweiTakeButton.setOnClickListener { takePhoto(true) }
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             val permissionList = arrayOf(
@@ -63,10 +79,8 @@ class MainActivity : AppCompatActivity() {
             )
             val needPermissionList = mutableListOf<String>()
             permissionList.filter {
-                ContextCompat.checkSelfPermission(
-                    this,
-                    it
-                ) != PackageManager.PERMISSION_GRANTED
+                ContextCompat.checkSelfPermission(this, it) !=
+                        PackageManager.PERMISSION_GRANTED
             }.forEach { needPermissionList.add(it) }
 
             if (needPermissionList.isNotEmpty()) {
@@ -92,73 +106,87 @@ class MainActivity : AppCompatActivity() {
 
     private var dialog: Dialog? = null
 
-    private fun downloadApk() {
-        if (dialog != null) {
-            return
+    private fun downloadApk(isHuawei: Boolean) {
+        lifecycleScope.launch {
+
+            if (dialog != null) {
+                return@launch
+            }
+
+            dialog = AlertDialog.Builder(this@MainActivity)
+                .setCancelable(false)
+                .setMessage("正在下载中...")
+                .show()
+
+            try {
+                val file = download()
+                Toast.makeText(this@MainActivity, "文件下载成功，准备安装", Toast.LENGTH_SHORT).show()
+                window?.decorView?.postDelayed({ installApk(file, isHuawei) }, 1500)
+            } catch (e: Exception) {
+                Toast.makeText(this@MainActivity, "文件下载失败", Toast.LENGTH_SHORT).show()
+            } finally {
+                dialog?.dismiss()
+                dialog = null
+            }
         }
 
-        val request = Request.Builder()
-            .url(URL_APK)
-            .get()
-            .build()
-
-        val call = httpClient.newCall(request)
-
-        dialog = AlertDialog.Builder(this)
-            .setCancelable(false)
-            .setMessage("正在下载中...")
-            .show()
-        call.enqueue(object : Callback {
-            override fun onFailure(call: Call, e: IOException) {
-                runOnUiThread {
-                    Toast.makeText(this@MainActivity, "文件下载失败", Toast.LENGTH_SHORT).show()
-                    dialog?.dismiss()
-                    dialog = null
-                }
-            }
-
-            override fun onResponse(call: Call, response: Response) {
-                if (!response.isSuccessful) {
-                    runOnUiThread {
-                        Toast.makeText(this@MainActivity, "文件下载失败", Toast.LENGTH_SHORT).show()
-                        dialog?.dismiss()
-                        dialog = null
-                    }
-                    return
-                }
-
-                // 构造文件
-                val file = File(File(getExternalFilesDir(null), "apk_file"), "pdd.apk")
-                file.parentFile.mkdirs()
-
-                // 构造流
-                val sink = file.sink().buffer()
-                val source = response.body!!.source()
-
-                val bufferSize = 8 * 1024L
-
-                while (!source.exhausted()) {
-                    source.read(sink.buffer, bufferSize)
-                    sink.emit()
-                }
-
-                // 关闭流
-                sink.flush()
-                source.close()
-                sink.close()
-
-                runOnUiThread {
-                    Toast.makeText(this@MainActivity, "文件下载成功，准备安装", Toast.LENGTH_SHORT).show()
-                    dialog?.dismiss()
-                    dialog = null
-                    window?.decorView?.postDelayed({ installApk(file) }, 1500)
-                }
-            }
-        })
     }
 
-    private fun installApk(file: File) {
-        val uri = FileProvider.getUriForFile(this, "wang.mycroft.fileprovider.fileprovider", file)
+    private suspend fun download(): File {
+        return suspendCancellableCoroutine<File> { completion ->
+            val request = Request.Builder()
+                .url(URL_APK)
+                .get()
+                .build()
+            val call = httpClient.newCall(request)
+
+            completion.invokeOnCancellation {
+                call.cancel()
+            }
+
+            call.enqueue(object : Callback {
+                override fun onFailure(call: Call, e: IOException) {
+                    completion.resumeWithException(e)
+                }
+
+                override fun onResponse(call: Call, response: Response) {
+                    if (!response.isSuccessful) {
+                        completion.resumeWithException(Exception("文件下载失败"))
+                        return
+                    }
+
+                    // 构造文件
+                    val file = File(File(getExternalFilesDir(null), "apk_file"), "pdd.apk")
+                    file.parentFile.mkdirs()
+
+                    // 构造流
+                    val sink = file.sink().buffer()
+                    val source = response.body!!.source()
+
+                    val bufferSize = 8 * 1024L
+
+                    while (!source.exhausted()) {
+                        source.read(sink.buffer, bufferSize)
+                        sink.emit()
+                    }
+
+                    // 关闭流
+                    sink.flush()
+                    source.close()
+                    sink.close()
+
+                    completion.resume(file)
+                }
+            })
+        }
+    }
+
+    private fun installApk(file: File, isHuawei: Boolean) {
+        val uri = if (isHuawei) {
+            ContentUriProvider.getUriForFile(this, AUTHORITY, file)
+        } else {
+            FileProvider.getUriForFile(this, AUTHORITY, file)
+        }
         val installIntent = Intent(Intent.ACTION_INSTALL_PACKAGE)
         installIntent.data = uri
         installIntent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
@@ -173,13 +201,20 @@ class MainActivity : AppCompatActivity() {
 
     private var tempFile: File? = null
 
-    private fun takePhoto() {
+    private fun takePhoto(isHuawei: Boolean) {
         tempFile = File(File(filesDir, "image_file"), "${UUID.randomUUID()}.jpg")
         if (!tempFile?.parentFile?.exists()!! && !tempFile?.parentFile?.mkdirs()!!) {
             return
         }
-        tempPhotoUri =
-            FileProvider.getUriForFile(this, "wang.mycroft.fileprovider.fileprovider", tempFile!!)
+        tempPhotoUri = if (isHuawei) {
+            ContentUriProvider.getUriForFile(
+                this,
+                AUTHORITY,
+                tempFile!!
+            )
+        } else {
+            FileProvider.getUriForFile(this, AUTHORITY, tempFile!!)
+        }
 
         val intent = Intent(MediaStore.ACTION_IMAGE_CAPTURE)
         intent.putExtra(MediaStore.EXTRA_OUTPUT, tempPhotoUri)
@@ -208,11 +243,11 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun compressImageUri(imageUri: Uri) {
-        contentResolver.openInputStream(imageUri)?.let {
+        contentResolver.openInputStream(imageUri)?.apply {
             val options = BitmapFactory.Options()
             options.inJustDecodeBounds = true
 
-            BitmapFactory.decodeStream(it, null, options)
+            BitmapFactory.decodeStream(this, null, options)
             Log.e("mycroft", "<${options.outWidth}, ${options.outHeight}>")
 
             options.inJustDecodeBounds = false
@@ -225,7 +260,7 @@ class MainActivity : AppCompatActivity() {
             val bitmap =
                 BitmapFactory.decodeStream(contentResolver.openInputStream(imageUri), null, options)
             bitmap.let {
-                image.setImageBitmap(bitmap)
+                binding.image.setImageBitmap(bitmap)
             }
         }
     }

@@ -22,6 +22,22 @@
         android:textAllCaps="false"
         tools:ignore="HardcodedText" />
 
+    <Button
+        android:id="@+id/huaweiDownloadButton"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Download APK by Huawei"
+        android:textAllCaps="false"
+        tools:ignore="HardcodedText" />
+
+    <Button
+        android:id="@+id/huaweiTakeButton"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Take Photo by Huawei"
+        android:textAllCaps="false"
+        tools:ignore="HardcodedText" />
+
     <ImageView
         android:id="@+id/image"
         android:layout_width="match_parent"
